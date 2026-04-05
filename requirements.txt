@@ -5,3 +5,4 @@ supabase>=2.0.0
 requests>=2.31.0
 rapidfuzz>=3.0.0
 streamlit-autorefresh>=1.0.1
+streamlit-javascript>=0.1.5

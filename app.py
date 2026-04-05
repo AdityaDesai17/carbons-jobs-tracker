@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone
 from streamlit_autorefresh import st_autorefresh
+from streamlit_javascript import st_javascript
 
 import auth
 import db
@@ -65,6 +66,12 @@ if "supabase_session" not in st.session_state:
 _refresh_count = st_autorefresh(interval=AUTO_REFRESH_INTERVAL_MS, key="autorefresh")
 
 user_id = st.session_state["user_id"]
+
+# Detect browser timezone — st_javascript returns 0 on first render, string on second
+_tz = st_javascript("Intl.DateTimeFormat().resolvedOptions().timeZone")
+if isinstance(_tz, str) and _tz:
+    st.session_state["user_tz"] = _tz
+user_tz = st.session_state.get("user_tz", "UTC")
 
 
 def _run_auto_scrape(searches: list[dict]) -> None:
@@ -185,7 +192,7 @@ def render_search_tab(search: dict) -> None:
         "location":    st.column_config.TextColumn("Location", width="medium"),
         "site":        st.column_config.TextColumn("Source", width="small"),
         "job_url":     st.column_config.LinkColumn("Apply", display_text="Apply →", width="small"),
-        "queried_at":  st.column_config.DatetimeColumn("Found At", format="MMM D, h:mm a", width="medium"),
+        "queried_at":  st.column_config.DatetimeColumn("Found At", format="MMM D, h:mm a", timezone=user_tz, width="medium"),
         "applied":     st.column_config.CheckboxColumn("Applied?", width="small"),
     }
 
@@ -266,7 +273,7 @@ def render_applied_tab(uid: str) -> None:
             "location":    st.column_config.TextColumn("Location", width="medium"),
             "site":        st.column_config.TextColumn("Source", width="small"),
             "job_url":     st.column_config.LinkColumn("Apply", display_text="Apply →", width="small"),
-            "queried_at":  st.column_config.DatetimeColumn("Found At", format="MMM D, h:mm a", width="medium"),
+            "queried_at":  st.column_config.DatetimeColumn("Found At", format="MMM D, h:mm a", timezone=user_tz, width="medium"),
         },
         hide_index=True,
         use_container_width=True,
