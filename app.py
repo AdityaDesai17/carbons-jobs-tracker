@@ -180,7 +180,7 @@ def render_search_tab(search: dict) -> None:
 
     original_applied = dict(zip(df["id"], df["applied"]))
 
-    base_cols = ["title", "company", "h1b_sponsor", "location", "site", "job_url", "queried_at", "applied", "delete"]
+    base_cols = ["applied", "job_url", "title", "company", "h1b_sponsor", "location", "site", "queried_at", "delete"]
     col_config = {
         "title":       st.column_config.TextColumn("Title", width="large"),
         "company":     st.column_config.TextColumn("Company", width="medium"),
@@ -194,7 +194,7 @@ def render_search_tab(search: dict) -> None:
     }
 
     if show_desc:
-        base_cols = ["title", "company", "h1b_sponsor", "location", "site", "job_url", "description", "queried_at", "applied", "delete"]
+        base_cols = ["applied", "job_url", "title", "company", "h1b_sponsor", "location", "site", "description", "queried_at", "delete"]
         col_config["description"] = st.column_config.TextColumn("Description", width="large")
 
     edited = st.data_editor(
