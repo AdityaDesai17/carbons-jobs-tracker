@@ -5,6 +5,8 @@ CREATE TABLE searches (
   user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   job_title  TEXT NOT NULL,
   location   TEXT NOT NULL,
+  sites      TEXT NOT NULL DEFAULT 'linkedin,indeed',
+  country    TEXT NOT NULL DEFAULT 'Canada',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -18,6 +20,8 @@ CREATE TABLE jobs (
   location    TEXT,
   site        TEXT,
   job_url     TEXT,
+  description TEXT,
+  easy_apply  BOOLEAN,
   queried_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   applied     BOOLEAN NOT NULL DEFAULT FALSE,
   UNIQUE(search_id, external_id)

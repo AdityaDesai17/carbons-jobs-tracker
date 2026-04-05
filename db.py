@@ -13,7 +13,7 @@ def get_searches(user_id: str) -> list[dict]:
     )
 
 
-def create_search(user_id: str, job_title: str, location: str, sites: list[str] | None = None) -> dict:
+def create_search(user_id: str, job_title: str, location: str, sites: list[str] | None = None, country: str = "Canada") -> dict:
     return (
         auth.get_authed_client()
         .table("searches")
@@ -22,6 +22,7 @@ def create_search(user_id: str, job_title: str, location: str, sites: list[str] 
             "job_title": job_title,
             "location":  location,
             "sites":     ",".join(sites) if sites else "linkedin,indeed",
+            "country":   country,
         })
         .execute()
         .data[0]
@@ -49,7 +50,7 @@ def get_jobs_for_search(search_id: str) -> list[dict]:
     return (
         auth.get_authed_client()
         .table("jobs")
-        .select("id,title,company,location,site,job_url,queried_at,applied")
+        .select("id,title,company,location,site,job_url,description,easy_apply,queried_at,applied")
         .eq("search_id", search_id)
         .eq("applied", False)
         .order("queried_at", desc=True)

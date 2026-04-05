@@ -67,17 +67,19 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+ALL_SITES = ["linkedin", "indeed"]
+
+COUNTRY_OPTIONS = ["Canada", "USA", "UK", "Australia", "India", "Germany", "Singapore", "UAE"]
+
+
 def render_search_tab(search: dict) -> None:
     saved_sites = (search.get("sites") or "linkedin,indeed").split(",")
+    country = search.get("country") or "Canada"
 
     # Header row
-    col_title, col_li, col_in, col_btn, col_close = st.columns([4, 1, 1, 1.5, 1.2])
+    col_title, col_btn, col_close = st.columns([5, 1.5, 1.2])
     with col_title:
         st.subheader(f"{search['job_title']} — {search['location']}")
-    with col_li:
-        use_linkedin = st.checkbox("LinkedIn", value="linkedin" in saved_sites, key=f"li_{search['id']}")
-    with col_in:
-        use_indeed   = st.checkbox("Indeed",   value="indeed"   in saved_sites, key=f"in_{search['id']}")
     with col_btn:
         refresh = st.button("Refresh Jobs", key=f"refresh_{search['id']}", use_container_width=True)
     with col_close:
@@ -86,60 +88,89 @@ def render_search_tab(search: dict) -> None:
             st.session_state["nav_index"] = 0
             st.rerun()
 
+    # Site checkboxes
+    site_cols = st.columns(len(ALL_SITES))
+    site_checks = {}
+    labels = {"zip_recruiter": "ZipRecruiter", "glassdoor": "Glassdoor",
+              "google": "Google", "naukri": "Naukri", "linkedin": "LinkedIn", "indeed": "Indeed"}
+    for col, site in zip(site_cols, ALL_SITES):
+        with col:
+            site_checks[site] = st.checkbox(
+                labels.get(site, site.title()),
+                value=site in saved_sites,
+                key=f"{site}_{search['id']}",
+            )
+
     if refresh:
-        selected = [s for s, on in [("linkedin", use_linkedin), ("indeed", use_indeed)] if on]
+        selected = [s for s, on in site_checks.items() if on]
         if not selected:
             st.warning("Select at least one site.")
         else:
-            with st.spinner("Scraping jobs — this may take 10–20 seconds..."):
-                jobs = run_scrape(search["job_title"], search["location"], sites=selected)
+            with st.spinner("Scraping jobs — LinkedIn descriptions add 30–60 seconds..."):
+                jobs = run_scrape(search["job_title"], search["location"], sites=selected, country_indeed=country)
                 db.upsert_jobs(jobs, search["id"], user_id)
             st.rerun()
 
     rows = db.get_jobs_for_search(search["id"])
     if not rows:
-        st.info("No jobs yet. Click **🔄 Refresh** to search.")
+        st.info("No jobs yet. Click **Refresh Jobs** to search.")
         return
 
     df = flag_h1b(_clean(pd.DataFrame(rows)))
 
     # Metrics row
-    linkedin_count = len(df[df["site"] == "linkedin"])
-    indeed_count   = len(df[df["site"] == "indeed"])
-    h1b_count      = len(df[df["h1b_sponsor"]])
-    m1, m2, m3, m4, _ = st.columns([1, 1, 1, 1, 4])
+    h1b_count = len(df[df["h1b_sponsor"]])
+    easy_count = len(df[df["easy_apply"] == True]) if "easy_apply" in df.columns else 0
+    m1, m2, m3, _ = st.columns([1, 1, 1, 5])
     m1.metric("Total Jobs", len(df))
-    m2.metric("LinkedIn", linkedin_count)
-    m3.metric("Indeed", indeed_count)
-    m4.metric("H1B Sponsors", h1b_count)
+    m2.metric("H1B Sponsors", h1b_count)
+    m3.metric("Easy Apply", easy_count)
 
     st.markdown("")
 
+    # Filter + toggle controls
+    fc1, fc2, _ = st.columns([1.5, 1.5, 5])
+    with fc1:
+        easy_only = st.checkbox("Easy Apply only", key=f"easy_{search['id']}")
+    with fc2:
+        show_desc = st.toggle("Show Descriptions", key=f"desc_{search['id']}")
+
+    display_df = df[df["easy_apply"] == True].copy() if easy_only else df.copy()
+
     original_applied = dict(zip(df["id"], df["applied"]))
 
+    base_cols = ["title", "company", "h1b_sponsor", "easy_apply", "location", "site", "job_url", "queried_at", "applied"]
+    col_config = {
+        "title":       st.column_config.TextColumn("Title", width="large"),
+        "company":     st.column_config.TextColumn("Company", width="medium"),
+        "h1b_sponsor": st.column_config.CheckboxColumn("H1B Sponsor", width="small"),
+        "easy_apply":  st.column_config.CheckboxColumn("Easy Apply", width="small"),
+        "location":    st.column_config.TextColumn("Location", width="medium"),
+        "site":        st.column_config.TextColumn("Source", width="small"),
+        "job_url":     st.column_config.LinkColumn("Apply", display_text="Apply →", width="small"),
+        "queried_at":  st.column_config.DatetimeColumn("Found At", format="MMM D, h:mm a", width="medium"),
+        "applied":     st.column_config.CheckboxColumn("Applied?", width="small"),
+    }
+
+    if show_desc:
+        base_cols = ["title", "company", "h1b_sponsor", "easy_apply", "location", "site", "job_url", "description", "queried_at", "applied"]
+        col_config["description"] = st.column_config.TextColumn("Description", width="large")
+
     edited = st.data_editor(
-        df[["title", "company", "h1b_sponsor", "location", "site", "job_url", "queried_at", "applied"]],
-        column_config={
-            "title":       st.column_config.TextColumn("Title", width="large"),
-            "company":     st.column_config.TextColumn("Company", width="medium"),
-            "h1b_sponsor": st.column_config.CheckboxColumn("H1B Sponsor", width="small"),
-            "location":    st.column_config.TextColumn("Location", width="medium"),
-            "site":        st.column_config.TextColumn("Source", width="small"),
-            "job_url":     st.column_config.LinkColumn("Apply", display_text="Apply →", width="small"),
-            "queried_at":  st.column_config.DatetimeColumn("Found At", format="MMM D, h:mm a", width="medium"),
-            "applied":     st.column_config.CheckboxColumn("Applied?", width="small"),
-        },
-        disabled=["title", "company", "h1b_sponsor", "location", "site", "job_url", "queried_at"],
+        display_df[base_cols],
+        column_config=col_config,
+        disabled=["title", "company", "h1b_sponsor", "easy_apply", "location", "site", "job_url", "description", "queried_at"],
         hide_index=True,
         use_container_width=True,
-        key=f"editor_{search['id']}",
+        key=f"editor_{search['id']}_{show_desc}_{easy_only}",
     )
 
     # Persist applied changes
+    display_id_map = display_df["id"].to_dict()  # {df_index: job_id}
     changed = False
     for idx, row in edited.iterrows():
-        job_id = df.loc[idx, "id"]
-        if row["applied"] and not original_applied[job_id]:
+        job_id = display_id_map.get(idx)
+        if job_id and row["applied"] and not original_applied.get(job_id):
             db.mark_applied(job_id)
             changed = True
     if changed:
@@ -152,26 +183,28 @@ def render_new_search_tab(uid: str) -> None:
         st.subheader("New Search")
         job_title = st.text_input("Job Title", placeholder="e.g. Data Analyst")
         location  = st.text_input("Location",  placeholder="e.g. Vancouver, BC")
+        country   = st.selectbox("Country (for Indeed/Glassdoor)", COUNTRY_OPTIONS, index=0, key="new_country")
 
         st.markdown("**Search on:**")
-        col_li, col_in = st.columns(2)
-        with col_li:
-            use_linkedin = st.checkbox("LinkedIn", value=True, key="new_li")
-        with col_in:
-            use_indeed   = st.checkbox("Indeed",   value=True, key="new_in")
+        site_cols = st.columns(2)
+        site_checks = {}
+        labels = {"linkedin": "LinkedIn", "indeed": "Indeed"}
+        for i, site in enumerate(ALL_SITES):
+            with site_cols[i]:
+                site_checks[site] = st.checkbox(labels[site], value=True, key=f"new_{site}")
 
         st.markdown("")
         if st.button("Save & Search", use_container_width=True, type="primary"):
             if not job_title or not location:
                 st.warning("Please enter a job title and location.")
             else:
-                selected = [s for s, on in [("linkedin", use_linkedin), ("indeed", use_indeed)] if on]
+                selected = [s for s, on in site_checks.items() if on]
                 if not selected:
                     st.warning("Select at least one site.")
                 else:
-                    with st.spinner("Scraping jobs..."):
-                        search = db.create_search(uid, job_title, location, sites=selected)
-                        jobs   = run_scrape(job_title, location, sites=selected)
+                    with st.spinner("Scraping jobs — LinkedIn descriptions add 30–60 seconds..."):
+                        search = db.create_search(uid, job_title, location, sites=selected, country=country)
+                        jobs   = run_scrape(job_title, location, sites=selected, country_indeed=country)
                         db.upsert_jobs(jobs, search["id"], uid)
                     st.rerun()
 
