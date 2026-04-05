@@ -47,23 +47,6 @@ def run_scrape(
         s = str(val) if val is not None else ""
         return "" if s.lower() == "nan" else s
 
-    def clean_bool(val) -> bool | None:
-        if val is None:
-            return None
-        if isinstance(val, bool):
-            return val
-        try:
-            if pd.isna(val):
-                return None
-        except Exception:
-            pass
-        s = str(val).lower()
-        if s in ("true", "1", "yes"):
-            return True
-        if s in ("false", "0", "no"):
-            return False
-        return None
-
     return [
         {
             "external_id": clean(row.get("id")),
@@ -73,7 +56,6 @@ def run_scrape(
             "site":        clean(row.get("site")),
             "job_url":     clean(row.get("job_url")),
             "description": clean(row.get("description")),
-            "easy_apply":  clean_bool(row.get("is_easy_apply")),
             "queried_at":  queried_at,
         }
         for _, row in combined.iterrows()

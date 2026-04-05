@@ -50,7 +50,7 @@ def get_jobs_for_search(search_id: str) -> list[dict]:
     return (
         auth.get_authed_client()
         .table("jobs")
-        .select("id,title,company,location,site,job_url,description,easy_apply,queried_at,applied")
+        .select("id,title,company,location,site,job_url,description,queried_at,applied")
         .eq("search_id", search_id)
         .eq("applied", False)
         .order("queried_at", desc=True)
@@ -84,6 +84,10 @@ def get_latest_queried_at(search_id: str) -> str | None:
         .data
     )
     return rows[0]["queried_at"] if rows else None
+
+
+def delete_job(job_id: str) -> None:
+    auth.get_authed_client().table("jobs").delete().eq("id", job_id).execute()
 
 
 def mark_applied(job_id: str) -> None:

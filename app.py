@@ -164,59 +164,62 @@ def render_search_tab(search: dict) -> None:
 
     # Metrics row
     h1b_count = len(df[df["h1b_sponsor"]])
-    easy_count = len(df[df["easy_apply"] == True]) if "easy_apply" in df.columns else 0
-    m1, m2, m3, _ = st.columns([1, 1, 1, 5])
+    m1, m2, _ = st.columns([1, 1, 6])
     m1.metric("Total Jobs", len(df))
     m2.metric("H1B Sponsors", h1b_count)
-    m3.metric("Easy Apply", easy_count)
 
     st.markdown("")
 
     # Filter + toggle controls
-    fc1, fc2, _ = st.columns([1.5, 1.5, 5])
+    _, fc1, _ = st.columns([0.1, 1.5, 6])
     with fc1:
-        easy_only = st.checkbox("Easy Apply only", key=f"easy_{search['id']}")
-    with fc2:
         show_desc = st.toggle("Show Descriptions", key=f"desc_{search['id']}")
 
-    display_df = df[df["easy_apply"] == True].copy() if easy_only else df.copy()
+    display_df = df.copy()
+    display_df["delete"] = False
 
     original_applied = dict(zip(df["id"], df["applied"]))
 
-    base_cols = ["title", "company", "h1b_sponsor", "easy_apply", "location", "site", "job_url", "queried_at", "applied"]
+    base_cols = ["title", "company", "h1b_sponsor", "location", "site", "job_url", "queried_at", "applied", "delete"]
     col_config = {
         "title":       st.column_config.TextColumn("Title", width="large"),
         "company":     st.column_config.TextColumn("Company", width="medium"),
         "h1b_sponsor": st.column_config.CheckboxColumn("H1B Sponsor", width="small"),
-        "easy_apply":  st.column_config.CheckboxColumn("Easy Apply", width="small"),
         "location":    st.column_config.TextColumn("Location", width="medium"),
         "site":        st.column_config.TextColumn("Source", width="small"),
         "job_url":     st.column_config.LinkColumn("Apply", display_text="Apply →", width="small"),
         "queried_at":  st.column_config.DatetimeColumn("Found At", format="MMM D, h:mm a", timezone=user_tz, width="medium"),
         "applied":     st.column_config.CheckboxColumn("Applied?", width="small"),
+        "delete":      st.column_config.CheckboxColumn("Delete", width="small"),
     }
 
     if show_desc:
-        base_cols = ["title", "company", "h1b_sponsor", "easy_apply", "location", "site", "job_url", "description", "queried_at", "applied"]
+        base_cols = ["title", "company", "h1b_sponsor", "location", "site", "job_url", "description", "queried_at", "applied", "delete"]
         col_config["description"] = st.column_config.TextColumn("Description", width="large")
 
     edited = st.data_editor(
         display_df[base_cols],
         column_config=col_config,
-        disabled=["title", "company", "h1b_sponsor", "easy_apply", "location", "site", "job_url", "description", "queried_at"],
+        disabled=["title", "company", "h1b_sponsor", "location", "site", "job_url", "description", "queried_at"],
         hide_index=True,
         use_container_width=True,
-        key=f"editor_{search['id']}_{show_desc}_{easy_only}",
+        key=f"editor_{search['id']}_{show_desc}",
     )
 
-    # Persist applied changes
     display_id_map = display_df["id"].to_dict()  # {df_index: job_id}
     changed = False
+
     for idx, row in edited.iterrows():
         job_id = display_id_map.get(idx)
-        if job_id and row["applied"] and not original_applied.get(job_id):
+        if not job_id:
+            continue
+        if row.get("delete"):
+            db.delete_job(job_id)
+            changed = True
+        elif row["applied"] and not original_applied.get(job_id):
             db.mark_applied(job_id)
             changed = True
+
     if changed:
         st.rerun()
 
