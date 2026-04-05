@@ -72,5 +72,19 @@ def get_applied_jobs(user_id: str) -> list[dict]:
     )
 
 
+def get_latest_queried_at(search_id: str) -> str | None:
+    rows = (
+        auth.get_authed_client()
+        .table("jobs")
+        .select("queried_at")
+        .eq("search_id", search_id)
+        .order("queried_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0]["queried_at"] if rows else None
+
+
 def mark_applied(job_id: str) -> None:
     auth.get_authed_client().table("jobs").update({"applied": True}).eq("id", job_id).execute()

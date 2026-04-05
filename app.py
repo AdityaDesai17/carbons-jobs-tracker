@@ -1,10 +1,15 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timezone
+from streamlit_autorefresh import st_autorefresh
 
 import auth
 import db
 from scraper import run_scrape
 from h1b import flag_h1b
+
+AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000   # check every 5 minutes
+STALE_THRESHOLD_HOURS    = 1                # re-scrape if data is older than this
 
 st.set_page_config(page_title="Job Tracker", layout="wide", initial_sidebar_state="expanded")
 
@@ -53,10 +58,42 @@ if "supabase_session" not in st.session_state:
 
 
 # ---------------------------------------------------------------------------
-# Tab render functions
+# Auto-refresh: rerun every 5 min; re-scrape searches older than 1 hour
 # ---------------------------------------------------------------------------
 
+# Returns an incrementing counter each time the timer fires
+_refresh_count = st_autorefresh(interval=AUTO_REFRESH_INTERVAL_MS, key="autorefresh")
+
 user_id = st.session_state["user_id"]
+
+
+def _run_auto_scrape(searches: list[dict]) -> None:
+    """Scrape any searches whose data is older than STALE_THRESHOLD_HOURS."""
+    stale = []
+    for s in searches:
+        latest = db.get_latest_queried_at(s["id"])
+        if latest is None:
+            continue
+        last_dt = datetime.fromisoformat(latest.replace("Z", "+00:00"))
+        age_hours = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
+        if age_hours >= STALE_THRESHOLD_HOURS:
+            stale.append(s)
+
+    if not stale:
+        return
+
+    with st.spinner(f"Auto-refreshing {len(stale)} search(es)..."):
+        for s in stale:
+            sites   = (s.get("sites") or "linkedin,indeed").split(",")
+            country = s.get("country") or "Canada"
+            jobs = run_scrape(s["job_title"], s["location"], sites=sites, country_indeed=country)
+            db.upsert_jobs(jobs, s["id"], user_id)
+
+    st.toast(f"Auto-refreshed {len(stale)} search(es)", icon="✅")
+
+# ---------------------------------------------------------------------------
+# Tab render functions
+# ---------------------------------------------------------------------------
 
 
 def _clean(df: pd.DataFrame) -> pd.DataFrame:
@@ -241,6 +278,13 @@ def render_applied_tab(uid: str) -> None:
 # ---------------------------------------------------------------------------
 
 searches = db.get_searches(user_id)
+
+# Auto-scrape stale searches only when the timer fires (not on every user interaction)
+_last_seen = st.session_state.get("_last_refresh_count", -1)
+if _refresh_count > 0 and _refresh_count != _last_seen:
+    st.session_state["_last_refresh_count"] = _refresh_count
+    _run_auto_scrape(searches)
+    st.rerun()
 
 with st.sidebar:
     st.markdown("## Job Tracker")
