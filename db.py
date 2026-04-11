@@ -53,10 +53,25 @@ def get_jobs_for_search(search_id: str) -> list[dict]:
         .select("id,title,company,location,site,job_url,description,queried_at,applied")
         .eq("search_id", search_id)
         .eq("applied", False)
+        .eq("deleted", False)
         .order("queried_at", desc=True)
         .execute()
         .data
     )
+
+
+def get_applied_pairs_for_search(search_id: str) -> set[tuple[str, str]]:
+    """Return (title, company) pairs of applied jobs — used to filter re-scraped duplicates."""
+    rows = (
+        auth.get_authed_client()
+        .table("jobs")
+        .select("title,company")
+        .eq("search_id", search_id)
+        .eq("applied", True)
+        .execute()
+        .data
+    )
+    return {(r["title"], r["company"]) for r in rows}
 
 
 def get_applied_jobs(user_id: str) -> list[dict]:
@@ -66,6 +81,7 @@ def get_applied_jobs(user_id: str) -> list[dict]:
         .select("id,title,company,location,site,job_url,queried_at")
         .eq("user_id", user_id)
         .eq("applied", True)
+        .eq("deleted", False)
         .order("queried_at", desc=True)
         .execute()
         .data
@@ -78,6 +94,7 @@ def get_latest_queried_at(search_id: str) -> str | None:
         .table("jobs")
         .select("queried_at")
         .eq("search_id", search_id)
+        .eq("deleted", False)
         .order("queried_at", desc=True)
         .limit(1)
         .execute()
@@ -87,7 +104,7 @@ def get_latest_queried_at(search_id: str) -> str | None:
 
 
 def delete_job(job_id: str) -> None:
-    auth.get_authed_client().table("jobs").delete().eq("id", job_id).execute()
+    auth.get_authed_client().table("jobs").update({"deleted": True}).eq("id", job_id).execute()
 
 
 def mark_applied(job_id: str) -> None:

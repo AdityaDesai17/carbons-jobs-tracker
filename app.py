@@ -162,6 +162,16 @@ def render_search_tab(search: dict) -> None:
 
     df = flag_h1b(_clean(pd.DataFrame(rows)))
 
+    # Filter out jobs whose title+company match already-applied jobs
+    # (handles re-scraped duplicates with non-deterministic external IDs)
+    applied_pairs = db.get_applied_pairs_for_search(search["id"])
+    if applied_pairs:
+        df = df[~df.apply(lambda r: (r["title"], r["company"]) in applied_pairs, axis=1)]
+
+    if df.empty:
+        st.info("No new jobs. All results have been applied or dismissed.")
+        return
+
     # Metrics row
     h1b_count = len(df[df["h1b_sponsor"]])
     m1, m2, _ = st.columns([1, 1, 6])

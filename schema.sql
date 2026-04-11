@@ -24,6 +24,7 @@ CREATE TABLE jobs (
   easy_apply  BOOLEAN,
   queried_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   applied     BOOLEAN NOT NULL DEFAULT FALSE,
+  deleted     BOOLEAN NOT NULL DEFAULT FALSE,
   UNIQUE(search_id, external_id)
 );
 
